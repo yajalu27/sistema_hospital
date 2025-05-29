@@ -1,101 +1,218 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Patient, Discharge, PatientStatus } from '../types';
-import { patients as initialPatients, discharges as initialDischarges } from '../data/mockData';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { 
+  fetchPatients, 
+  searchPatients as apiSearchPatients, 
+  dischargePatient as apiDischargePatient,
+  createPatient as apiCreatePatient,
+  fetchInternedPatientsWithDischarges,
+  getPatientDischarges,
+  fetchServices,
+  fetchProducts,
+  createDischarge,
+  fetchClients,
+  createClient as apiCreateClient,
+  fetchInvoices,
+  fetchInvoice,
+  downloadInvoicePDF,
+  createInvoice,
+  fetchDischargedPatientsWithUnbilledDischarges,
+  Patient,
+  PatientWithDischarges,
+  Discharge,
+  Service,
+  Product,
+  DescargoCreate,
+  Client,
+  Invoice
+} from '../services/api';
 
 interface PatientContextType {
   patients: Patient[];
-  discharges: Discharge[];
-  searchPatients: (query: string, status?: PatientStatus) => Patient[];
-  getPatientById: (id: string) => Patient | undefined;
-  getDischargesByPatientId: (patientId: string) => Discharge[];
-  searchDischargesByPatient: (query: string) => Discharge[];
-  dischargePatient: (id: string) => void;
-  addDischarge: (discharge: Omit<Discharge, 'id'>) => void;
+  services: Service[];
+  products: Product[];
+  clients: Client[];
+  invoices: Invoice[];
+  patientsWithDischarges: PatientWithDischarges[];
+  loadPatients: () => Promise<void>;
+  searchPatients: (query: string) => Promise<Patient[]>;
+  dischargePatient: (id: number) => Promise<void>;
+  createPatient: (patientData: any) => Promise<void>;
+  loadPatientsWithDischarges: () => Promise<void>;
+  getPatientDischarges: (patientId: number) => Promise<Discharge[]>;
+  loadServices: () => Promise<void>;
+  loadProducts: () => Promise<void>;
+  createDischarge: (dischargeData: DescargoCreate) => Promise<Discharge>;
+  loadClients: () => Promise<void>;
+  createClient: (clientData: Omit<Client, 'id'>) => Promise<Client>;
+  loadInvoices: () => Promise<void>;
+  fetchInvoice: (invoiceId: number) => Promise<Invoice>;
+  downloadInvoicePDF: (invoiceId: number) => Promise<Blob>;
+  createInvoice: (pacienteId: number, clienteId: number) => Promise<Invoice>;
+  dischargedPatientsWithUnbilledDischarges: PatientWithDischarges[];
+  loadDischargedPatientsWithUnbilledDischarges: () => Promise<void>;
+
 }
 
 const PatientContext = createContext<PatientContextType | undefined>(undefined);
 
+export const usePatients = () => {
+  const context = useContext(PatientContext);
+  if (!context) {
+    throw new Error('usePatients must be used within a PatientProvider');
+  }
+  return context;
+};
+
 export const PatientProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [patients, setPatients] = useState<Patient[]>(initialPatients);
-  const [discharges, setDischarges] = useState<Discharge[]>(initialDischarges);
-
-  const searchPatients = (query: string, status?: PatientStatus): Patient[] => {
-    return patients.filter(
-      (patient) => 
-        (patient.name.toLowerCase().includes(query.toLowerCase()) || 
-         patient.identificationNumber.toLowerCase().includes(query.toLowerCase())) &&
-        (!status || patient.status === status)
-    );
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [patientsWithDischarges, setPatientsWithDischarges] = useState<PatientWithDischarges[]>([]);
+  const [dischargedPatientsWithUnbilledDischarges, setDischargedPatientsWithUnbilledDischarges] = useState<PatientWithDischarges[]>([]);
+  
+  const loadDischargedPatientsWithUnbilledDischarges = async () => {
+    try {
+      const data = await fetchDischargedPatientsWithUnbilledDischarges();
+      setDischargedPatientsWithUnbilledDischarges(data);
+    } catch (error) {
+      console.error('Error loading discharged patients with unbilled discharges:', error);
+    }
+  };
+  
+  const loadPatients = async () => {
+    try {
+      const data = await fetchPatients();
+      setPatients(data);
+    } catch (error) {
+      console.error('Error loading patients:', error);
+    }
   };
 
-  const getPatientById = (id: string): Patient | undefined => {
-    return patients.find(patient => patient.id === id);
+  const loadPatientsWithDischarges = async () => {
+    try {
+      const data = await fetchInternedPatientsWithDischarges();
+      setPatientsWithDischarges(data);
+    } catch (error) {
+      console.error('Error loading patients with discharges:', error);
+    }
   };
 
-  const getDischargesByPatientId = (patientId: string): Discharge[] => {
-    return discharges.filter(discharge => discharge.patientId === patientId);
+  const loadServices = async () => {
+    try {
+      const data = await fetchServices();
+      setServices(data);
+    } catch (error) {
+      console.error('Error loading services:', error);
+    }
   };
 
-  const searchDischargesByPatient = (query: string): Discharge[] => {
-    // Find patients matching the query
-    const matchedPatients = patients.filter(
-      patient => 
-        patient.name.toLowerCase().includes(query.toLowerCase()) || 
-        patient.identificationNumber.toLowerCase().includes(query.toLowerCase())
-    );
-
-    // Get the IDs of matched patients
-    const patientIds = matchedPatients.map(patient => patient.id);
-
-    // Filter discharges that belong to those patients
-    return discharges.filter(discharge => patientIds.includes(discharge.patientId));
+  const loadProducts = async () => {
+    try {
+      const data = await fetchProducts();
+      setProducts(data);
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
   };
 
-  const dischargePatient = (id: string) => {
-    setPatients(patients.map(patient => 
-      patient.id === id 
-        ? { ...patient, status: 'discharged' as PatientStatus, lastUpdate: new Date().toISOString().split('T')[0] } 
-        : patient
-    ));
+  const loadClients = async () => {
+    try {
+      const data = await fetchClients();
+      setClients(data);
+    } catch (error) {
+      console.error('Error loading clients:', error);
+    }
   };
 
-  const addDischarge = (discharge: Omit<Discharge, 'id'>) => {
-    const newDischarge = {
-      ...discharge,
-      id: `${discharges.length + 1}`,
-      date: new Date().toISOString().split('T')[0]
-    };
-    
-    setDischarges([...discharges, newDischarge]);
-
-    // Update patient status to inTreatment if they were active
-    setPatients(patients.map(patient => 
-      patient.id === discharge.patientId && patient.status === 'active'
-        ? { ...patient, status: 'inTreatment' as PatientStatus, lastUpdate: new Date().toISOString().split('T')[0] } 
-        : patient
-    ));
+  const createClient = async (clientData: Omit<Client, 'id'>) => {
+    try {
+      const newClient = await apiCreateClient(clientData);
+      await loadClients(); // Actualizar la lista de clientes
+      return newClient;
+    } catch (error) {
+      console.error('Error creating client:', error);
+      throw error;
+    }
   };
+
+  const loadInvoices = async () => {
+    try {
+      const data = await fetchInvoices();
+      setInvoices(data);
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+    }
+  };
+
+  const searchPatients = async (query: string) => {
+    try {
+      return await apiSearchPatients(query || '');
+    } catch (error) {
+      console.error('Error searching patients:', error);
+      return [];
+    }
+  };
+
+  const dischargePatient = async (id: number) => {
+    try {
+      await apiDischargePatient(id);
+      await loadPatients();
+      await loadPatientsWithDischarges();
+    } catch (error) {
+      console.error('Error discharging patient:', error);
+      throw error;
+    }
+  };
+
+  const createPatient = async (patientData: any) => {
+    try {
+      await apiCreatePatient(patientData);
+      await loadPatients();
+    } catch (error) {
+      console.error('Error creating patient:', error);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    loadPatients();
+    loadPatientsWithDischarges();
+    loadDischargedPatientsWithUnbilledDischarges();
+    loadServices();
+    loadProducts();
+    loadClients();
+    loadInvoices();
+  }, []);
 
   return (
     <PatientContext.Provider value={{
       patients,
-      discharges,
+      services,
+      products,
+      clients,
+      invoices,
+      patientsWithDischarges,
+      loadPatients,
       searchPatients,
-      getPatientById,
-      getDischargesByPatientId,
-      searchDischargesByPatient,
       dischargePatient,
-      addDischarge
+      createPatient,
+      loadPatientsWithDischarges,
+      getPatientDischarges,
+      loadServices,
+      loadProducts,
+      createDischarge,
+      loadClients,
+      createClient,
+      loadInvoices,
+      fetchInvoice,
+      downloadInvoicePDF,
+      createInvoice,
+      dischargedPatientsWithUnbilledDischarges,
+      loadDischargedPatientsWithUnbilledDischarges,
     }}>
       {children}
     </PatientContext.Provider>
   );
-};
-
-export const usePatients = () => {
-  const context = useContext(PatientContext);
-  if (context === undefined) {
-    throw new Error('usePatients must be used within a PatientProvider');
-  }
-  return context;
 };

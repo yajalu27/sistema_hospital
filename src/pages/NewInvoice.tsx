@@ -1,212 +1,219 @@
+// components/NewInvoice.tsx
+
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { usePatients } from '../context/PatientContext';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import { Save, ArrowLeft } from 'lucide-react';
-import { discharges, patients, invoices } from '../data/mockData';
-import { Discharge } from '../types';
+import Select from '../components/ui/Select';
+import { Save } from 'lucide-react';
+import axios from 'axios';
 
 const NewInvoice: React.FC = () => {
-  const { dischargeId } = useParams<{ dischargeId: string }>();
   const navigate = useNavigate();
-  const [discharge, setDischarge] = useState<Discharge | null>(null);
+  const { 
+    dischargedPatientsWithUnbilledDischarges, 
+    invoices, 
+    createInvoice, 
+    createClient,
+    loadDischargedPatientsWithUnbilledDischarges 
+  } = usePatients();
+
+  const [pacienteId, setPacienteId] = useState('');
+  const [clientData, setClientData] = useState({
+    nombre: '',
+    direccion: '',
+    telefono: '',
+    correo: ''
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
+  // Cargar los pacientes al montar el componente
   useEffect(() => {
-    const foundDischarge = discharges.find(d => d.id === dischargeId);
-    setDischarge(foundDischarge || null);
-    setLoading(false);
-  }, [dischargeId]);
-
-  const getPatientName = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient ? patient.name : 'Paciente desconocido';
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: 'EUR'
-    }).format(amount);
-  };
-
-  const calculateTotals = () => {
-    if (!discharge) return { subtotal: 0, tax: 0, total: 0 };
-
-    const productsTotal = discharge.products.reduce((sum, product) => 
-      sum + (product.price * product.quantity), 0);
-    
-    const servicesTotal = discharge.services.reduce((sum, service) => 
-      sum + service.price, 0);
-
-    const subtotal = productsTotal + servicesTotal;
-    const tax = subtotal * 0.16; // 16% tax rate
-    const total = subtotal + tax;
-
-    return { subtotal, tax, total };
-  };
-
-  const handleCreateInvoice = () => {
-    if (!discharge) return;
-
-    const { subtotal, tax, total } = calculateTotals();
-
-    const newInvoice = {
-      id: `${invoices.length + 1}`,
-      dischargeId: discharge.id,
-      patientId: discharge.patientId,
-      date: new Date().toISOString().split('T')[0],
-      items: [
-        ...discharge.products.map(product => ({
-          description: `${product.productName} (${product.quantity} ${product.unit})`,
-          quantity: product.quantity,
-          unitPrice: product.price,
-          total: product.price * product.quantity
-        })),
-        ...discharge.services.map(service => ({
-          description: service.serviceName,
-          quantity: 1,
-          unitPrice: service.price,
-          total: service.price
-        }))
-      ],
-      subtotal,
-      tax,
-      total,
-      status: 'pending' as const
+    const loadData = async () => {
+      await loadDischargedPatientsWithUnbilledDischarges();
+      setLoading(false);
     };
+    loadData();
+  }, [loadDischargedPatientsWithUnbilledDischarges]);
 
-    // In a real application, this would be handled by the backend
-    // For now, we'll just show a success message and navigate back
-    alert('Factura generada exitosamente');
-    navigate('/invoices');
+  // Preparar las opciones para el Select
+  const patientOptions = dischargedPatientsWithUnbilledDischarges.map(patient => ({
+    value: patient.id.toString(),
+    label: patient.nombre_completo
+  }));
+
+  const handleClientChange = (field: keyof typeof clientData, value: string) => {
+    setClientData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const validate = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    if (!pacienteId) {
+      newErrors.pacienteId = 'Debe seleccionar un paciente';
+    }
+
+    if (!clientData.nombre) {
+      newErrors.nombre = 'El nombre del cliente es obligatorio';
+    }
+
+    if (!clientData.direccion) {
+      newErrors.direccion = 'La dirección del cliente es obligatoria';
+    }
+
+    if (!clientData.telefono) {
+      newErrors.telefono = 'El teléfono del cliente es obligatorio';
+    }
+
+    if (!clientData.correo) {
+      newErrors.correo = 'El correo del cliente es obligatorio';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientData.correo)) {
+      newErrors.correo = 'El correo no es válido';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validate()) {
+      return;
+    }
+
+    try {
+      // Crear el cliente
+      const newClient = await createClient(clientData);
+      let clientId;
+      
+      if ('data' in newClient && typeof newClient.data === 'object' && 'id' in newClient.data) {
+        clientId = newClient.data.id;
+      } else if ('id' in newClient) {
+        clientId = newClient.id;
+      } else {
+        throw new Error('La respuesta de creación del cliente no contiene un ID válido');
+      }
+
+      // Generar la factura con el cliente recién creado
+      await createInvoice(Number(pacienteId), clientId);
+      alert('Factura generada exitosamente');
+      navigate('/invoices');
+    } catch (error) {
+      console.error('Error al generar factura:', error);
+      if (axios.isAxiosError(error) && error.response) {
+        alert(`Error al generar la factura: ${error.response.data.detail || 'Error desconocido'}`);
+      } else {
+        alert('Error al generar la factura. Por favor, intenta de nuevo.');
+      }
+    }
   };
 
   if (loading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-full">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="flex justify-center items-center h-64">
+          <p>Cargando pacientes...</p>
         </div>
       </Layout>
     );
   }
-
-  if (!discharge) {
-    return (
-      <Layout>
-        <div className="text-center">
-          <h2 className="text-lg font-medium text-gray-900">Descargo no encontrado</h2>
-          <p className="mt-1 text-sm text-gray-500">El descargo solicitado no existe o ha sido eliminado.</p>
-          <Button
-            variant="outline"
-            className="mt-4"
-            onClick={() => navigate('/invoices')}
-            icon={<ArrowLeft size={18} />}
-          >
-            Volver a Facturas
-          </Button>
-        </div>
-      </Layout>
-    );
-  }
-
-  const { subtotal, tax, total } = calculateTotals();
 
   return (
     <Layout>
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Generar Nueva Factura</h1>
-          <Button
-            variant="outline"
-            onClick={() => navigate('/invoices')}
-            icon={<ArrowLeft size={18} />}
-          >
-            Volver
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Generar Nueva Factura</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Genere una nueva factura para el descargo seleccionado.
+          Seleccione un paciente con descargos no facturados y registre los datos del cliente.
         </p>
       </div>
 
-      <Card>
-        <div className="mb-6">
-          <h2 className="text-lg font-medium text-gray-900">Detalles del Paciente</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            <strong>Paciente:</strong> {getPatientName(discharge.patientId)}
-          </p>
-          <p className="mt-1 text-sm text-gray-600">
-            <strong>Fecha del descargo:</strong> {discharge.date}
-          </p>
-        </div>
+      <form onSubmit={handleSubmit}>
+        <Card className="mb-6">
+          <Select
+            label="Seleccionar Paciente"
+            options={patientOptions}
+            value={pacienteId}
+            onChange={setPacienteId}
+            error={errors.pacienteId}
+            required
+          />
 
-        <div className="mb-6">
-          <h3 className="text-md font-medium text-gray-900 mb-4">Productos y Servicios</h3>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Unit.</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {discharge.products.map((product, index) => (
-                  <tr key={`product-${index}`}>
-                    <td className="px-4 py-2 text-sm text-gray-900">{product.productName}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{product.quantity} {product.unit}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(product.price)}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(product.price * product.quantity)}</td>
-                  </tr>
-                ))}
-                {discharge.services.map((service, index) => (
-                  <tr key={`service-${index}`}>
-                    <td className="px-4 py-2 text-sm text-gray-900">{service.serviceName}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">1</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(service.price)}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(service.price)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          {patientOptions.length === 0 && (
+            <div className="mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-md text-sm">
+              No hay pacientes con descargos pendientes de facturación.
+            </div>
+          )}
 
-        <div className="border-t border-gray-200 pt-4">
-          <div className="flex justify-end">
-            <div className="w-64">
-              <div className="flex justify-between py-2">
-                <span className="text-sm font-medium text-gray-500">Subtotal:</span>
-                <span className="text-sm text-gray-900">{formatCurrency(subtotal)}</span>
+          <div className="mt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Datos del Cliente</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Nombre</label>
+                <input
+                  type="text"
+                  value={clientData.nombre}
+                  onChange={(e) => handleClientChange('nombre', e.target.value)}
+                  className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm ${errors.nombre ? 'border-red-500' : ''}`}
+                  required
+                />
+                {errors.nombre && <p className="mt-1 text-sm text-red-600">{errors.nombre}</p>}
               </div>
-              <div className="flex justify-between py-2">
-                <span className="text-sm font-medium text-gray-500">IVA (16%):</span>
-                <span className="text-sm text-gray-900">{formatCurrency(tax)}</span>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Dirección</label>
+                <input
+                  type="text"
+                  value={clientData.direccion}
+                  onChange={(e) => handleClientChange('direccion', e.target.value)}
+                  className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm ${errors.direccion ? 'border-red-500' : ''}`}
+                  required
+                />
+                {errors.direccion && <p className="mt-1 text-sm text-red-600">{errors.direccion}</p>}
               </div>
-              <div className="flex justify-between py-2 border-t border-gray-200">
-                <span className="text-base font-medium text-gray-900">Total:</span>
-                <span className="text-base font-medium text-gray-900">{formatCurrency(total)}</span>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Teléfono</label>
+                <input
+                  type="text"
+                  value={clientData.telefono}
+                  onChange={(e) => handleClientChange('telefono', e.target.value)}
+                  className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm ${errors.telefono ? 'border-red-500' : ''}`}
+                  required
+                />
+                {errors.telefono && <p className="mt-1 text-sm text-red-600">{errors.telefono}</p>}
+              </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700">Correo</label>
+                <input
+                  type="email"
+                  value={clientData.correo}
+                  onChange={(e) => handleClientChange('correo', e.target.value)}
+                  className={`mt-1 block w-full border-gray-300 rounded-md shadow-sm ${errors.correo ? 'border-red-500' : ''}`}
+                  required
+                />
+                {errors.correo && <p className="mt-1 text-sm text-red-600">{errors.correo}</p>}
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-6 flex justify-end">
-          <Button
-            variant="primary"
-            size="lg"
-            onClick={handleCreateInvoice}
-            icon={<Save size={18} />}
-          >
-            Generar Factura
-          </Button>
-        </div>
-      </Card>
+          <div className="flex justify-end pt-4 border-t border-gray-200">
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              icon={<Save size={18} />}
+              disabled={patientOptions.length === 0}
+            >
+              Generar Factura
+            </Button>
+          </div>
+        </Card>
+      </form>
     </Layout>
   );
 };

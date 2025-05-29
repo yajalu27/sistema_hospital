@@ -1,128 +1,101 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePatients } from '../context/PatientContext';
 import Layout from '../components/layout/Layout';
 import Card from '../components/ui/Card';
-import Input from '../components/ui/Input';
-import { Search, ChevronDown, ChevronUp } from 'lucide-react';
-import { Discharge } from '../types';
+import { PatientWithDischarges } from '../services/api';
+import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 
 const Discharges: React.FC = () => {
-  const { searchDischargesByPatient, patients } = usePatients();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedDischarge, setExpandedDischarge] = useState<string | null>(null);
+  const { patientsWithDischarges, loadPatientsWithDischarges } = usePatients();
+  const [expandedPatient, setExpandedPatient] = useState<number | null>(null);
 
-  const discharges = searchQuery ? searchDischargesByPatient(searchQuery) : [];
+  useEffect(() => {
+    loadInternedPatients();
+  }, []);
 
-  const getPatientName = (patientId: string) => {
-    const patient = patients.find(p => p.id === patientId);
-    return patient ? patient.name : 'Paciente desconocido';
+  const loadInternedPatients = async () => {
+    try {
+      await loadPatientsWithDischarges();
+    } catch (error) {
+      console.error('Error loading interned patients with discharges:', error);
+    }
   };
 
-  const toggleDischarge = (dischargeId: string) => {
-    if (expandedDischarge === dischargeId) {
-      setExpandedDischarge(null);
-    } else {
-      setExpandedDischarge(dischargeId);
-    }
+  const togglePatient = (patientId: number) => {
+    setExpandedPatient(expandedPatient === patientId ? null : patientId);
+  };
+
+  const calculateTotals = (patient: PatientWithDischarges) => {
+    const totalDischarges = patient.descargos?.length || 0;
+    const totalAmount = patient.descargos?.reduce((sum, discharge) => sum + discharge.total, 0) || 0;
+    return { totalDischarges, totalAmount };
   };
 
   return (
     <Layout>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Descargos de Pacientes</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Busque y visualice los descargos realizados para cada paciente.
-        </p>
+        <h1 className="text-2xl font-bold text-gray-900">Pacientes Internados con Descargos</h1>
+        <p className="mt-1 text-sm text-gray-500">Lista de pacientes internados con descargos registrados.</p>
       </div>
-
       <Card className="mb-6">
-        <Input
-          label="Buscar descargos por nombre de paciente o número de identificación"
-          placeholder="Ingrese nombre o ID del paciente..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          icon={<Search size={18} />}
-        />
-      </Card>
+        {patientsWithDischarges.length > 0 ? (
+          <ul className="divide-y divide-gray-200">
+            {patientsWithDischarges.map((patient) => {
+              const { totalDischarges, totalAmount } = calculateTotals(patient);
+              const isExpanded = expandedPatient === patient.id;
 
-      {searchQuery && discharges.length === 0 && (
-        <div className="bg-white p-6 rounded-lg shadow-sm text-center">
-          <p className="text-gray-500">No se encontraron descargos para el paciente buscado.</p>
-        </div>
-      )}
-
-      {discharges.length > 0 && (
-        <div className="space-y-4">
-          {discharges.map((discharge) => (
-            <Card key={discharge.id} className="transition-all duration-200">
-              <div 
-                className="flex justify-between items-center cursor-pointer"
-                onClick={() => toggleDischarge(discharge.id)}
-              >
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">
-                    {getPatientName(discharge.patientId)}
-                  </h3>
-                  <p className="text-sm text-gray-500">Fecha: {discharge.date}</p>
-                </div>
-                <div>
-                  {expandedDischarge === discharge.id ? 
-                    <ChevronUp className="text-gray-400" /> : 
-                    <ChevronDown className="text-gray-400" />
-                  }
-                </div>
-              </div>
-
-              {expandedDischarge === discharge.id && (
-                <div className="mt-4 pt-4 border-t border-gray-200 animate-fadeIn">
-                  {discharge.products.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-medium text-sm text-gray-700 mb-2">Productos utilizados:</h4>
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <ul className="divide-y divide-gray-200">
-                          {discharge.products.map((product, index) => (
-                            <li key={index} className="py-2 first:pt-0 last:pb-0">
-                              <div className="flex justify-between">
-                                <span className="text-sm font-medium">{product.productName}</span>
-                                <span className="text-sm text-gray-500">{product.quantity} {product.unit}</span>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
+              return (
+                <li key={patient.id} className="py-4">
+                  <div
+                    className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-3 rounded-lg transition-colors duration-200"
+                    onClick={() => togglePatient(patient.id)}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{patient.nombre_completo}</h3>
+                        <span className="text-sm text-gray-500">(ID: {patient.id})</span>
+                      </div>
+                      <div className="mt-1 flex space-x-4 text-sm">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {totalDischarges} Descargo{totalDischarges !== 1 ? 's' : ''}
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                          Total: ${totalAmount.toFixed(2)}
+                        </span>
                       </div>
                     </div>
-                  )}
-
-                  {discharge.services.length > 0 && (
-                    <div className="mb-4">
-                      <h4 className="font-medium text-sm text-gray-700 mb-2">Servicios aplicados:</h4>
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <ul className="divide-y divide-gray-200">
-                          {discharge.services.map((service, index) => (
-                            <li key={index} className="py-2 first:pt-0 last:pb-0">
-                              <div>
-                                <span className="text-sm font-medium">{service.serviceName}</span>
-                                <p className="text-sm text-gray-500 mt-1">{service.description}</p>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="font-medium text-sm text-gray-700 mb-2">Observaciones:</h4>
-                    <div className="bg-gray-50 p-3 rounded-md">
-                      <p className="text-sm text-gray-700">{discharge.observations || "Sin observaciones"}</p>
+                    <div>
+                      {isExpanded ? (
+                        <ChevronUpIcon className="h-5 w-5 text-gray-500" />
+                      ) : (
+                        <ChevronDownIcon className="h-5 w-5 text-gray-500" />
+                      )}
                     </div>
                   </div>
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
+                  {isExpanded && (
+                    <div className="mt-2 pl-6 transition-all duration-300 ease-in-out">
+                      <ul className="space-y-2">
+                        {patient.descargos?.map((discharge) => (
+                          <li
+                            key={discharge.id}
+                            className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md"
+                          >
+                            <span className="font-medium">Descargo #{discharge.id}</span> - Total: $
+                            {discharge.total.toFixed(2)} - Fecha:{' '}
+                            {new Date(discharge.fecha).toLocaleDateString()}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-gray-500 text-center py-4">No hay pacientes internados con descargos.</p>
+        )}
+      </Card>
     </Layout>
   );
 };
