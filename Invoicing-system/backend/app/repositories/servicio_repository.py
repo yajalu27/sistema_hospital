@@ -1,13 +1,17 @@
 from sqlalchemy.orm import Session
-from app.models import Servicio
+from app.models.servicio import Servicio, TipoServicio
 from app.schemas.servicio_producto_schema import ServicioCreate
+from app.services.factories.service_factory import ServicioFactoryManager
 
 class ServicioRepository:
     def __init__(self, db: Session):
         self.db = db
 
     def crear_servicio(self, servicio: ServicioCreate):
-        db_servicio = Servicio(**servicio.model_dump())
+        # Obtener la fábrica según el tipo de servicio
+        factory = ServicioFactoryManager.get_factory(servicio.tipo)
+        # Crear la instancia del servicio usando la fábrica
+        db_servicio = factory.create_servicio(servicio)
         self.db.add(db_servicio)
         self.db.commit()
         self.db.refresh(db_servicio)

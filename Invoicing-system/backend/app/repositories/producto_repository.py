@@ -1,13 +1,17 @@
 from sqlalchemy.orm import Session
-from app.models import Producto
+from app.models.producto import Producto, TipoProducto
 from app.schemas.servicio_producto_schema import ProductoCreate
+from app.services.factories.product_factory import ProductoFactoryManager
 
 class ProductoRepository:
     def __init__(self, db: Session):
         self.db = db
 
     def crear_producto(self, producto: ProductoCreate):
-        db_producto = Producto(**producto.model_dump())
+        # Obtener la fábrica según el tipo de producto
+        factory = ProductoFactoryManager.get_factory(producto.tipo)
+        # Crear la instancia del producto usando la fábrica
+        db_producto = factory.create_producto(producto)
         self.db.add(db_producto)
         self.db.commit()
         self.db.refresh(db_producto)

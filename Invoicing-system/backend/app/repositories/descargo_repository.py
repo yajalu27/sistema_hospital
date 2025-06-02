@@ -14,7 +14,7 @@ class DescargoRepository:
             self.db.add(descargo)
             self.db.commit()
             self.db.refresh(descargo)
-            
+            a
             total = 0.0
             lineas_response = []
             

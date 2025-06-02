@@ -10,10 +10,10 @@ class TipoServicioEnum(str, Enum):
     procedimiento_medico = "procedimiento_medico"
 
 class TipoProductoEnum(str, Enum):
-    comida = "comida"
-    vacunas = "vacunas"
     medicamentos = "medicamentos"
     insumos_medicos = "insumos_medicos"
+    suplementos_nutricionales = "suplementos_nutricionales"
+    vacunas = "vacunas"
 
 # Esquemas para Servicios
 class ServicioBase(BaseModel):
@@ -29,6 +29,9 @@ class ServicioResponse(ServicioBase):
     
     class Config:
         from_attributes = True
+        json_schema_extra = {
+            "example": {"id": 1, "tipo": "atencion_medica", "precio_base": 100.0, "descripcion": "Consulta general"}
+        }
 
 # Esquemas para Productos
 class ProductoBase(BaseModel):
@@ -44,3 +47,6 @@ class ProductoResponse(ProductoBase):
     
     class Config:
         from_attributes = True
+        json_schema_extra = {
+            "example": {"id": 1, "tipo": "medicamentos", "precio_base": 50.0, "descripcion": "Paracetamol 500mg"}
+        }

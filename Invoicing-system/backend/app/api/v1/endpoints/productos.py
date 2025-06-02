@@ -24,7 +24,7 @@ def obtener_producto(producto_id: int, db: Session = Depends(get_db)):
 
 @router.get("/tipo/{tipo}", response_model=list[ProductoResponse])
 def listar_por_tipo(tipo: TipoProductoEnum, db: Session = Depends(get_db)):
-    return ProductoService(db).listar_productos()  # Filtro pendiente
+    return ProductoService(db).listar_productos(tipo=tipo)
 
 @router.put("/{producto_id}", response_model=ProductoResponse)
 def actualizar_producto(

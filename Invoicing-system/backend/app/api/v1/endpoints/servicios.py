@@ -24,7 +24,7 @@ def obtener_servicio(servicio_id: int, db: Session = Depends(get_db)):
 
 @router.get("/tipo/{tipo}", response_model=list[ServicioResponse])
 def listar_por_tipo(tipo: TipoServicioEnum, db: Session = Depends(get_db)):
-    return ServicioService(db).listar_servicios()  # Filtro pendiente
+    return ServicioService(db).listar_servicios(tipo=tipo)
 
 @router.put("/{servicio_id}", response_model=ServicioResponse)
 def actualizar_servicio(

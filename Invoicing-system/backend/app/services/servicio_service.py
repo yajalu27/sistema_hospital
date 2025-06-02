@@ -1,6 +1,7 @@
 from fastapi import HTTPException, status
 from app.repositories.servicio_repository import ServicioRepository
 from app.schemas.servicio_producto_schema import ServicioResponse
+from app.models.servicio import TipoServicio
 
 class ServicioService:
     def __init__(self, db):
@@ -18,7 +19,9 @@ class ServicioService:
             )
         return servicio
 
-    def listar_servicios(self):
+    def listar_servicios(self, tipo: TipoServicio = None):
+        if tipo:
+            return self.repository.db.query(Servicio).filter(Servicio.tipo == tipo).all()
         return self.repository.listar_servicios()
 
     def actualizar_servicio(self, servicio_id: int, servicio_data):
