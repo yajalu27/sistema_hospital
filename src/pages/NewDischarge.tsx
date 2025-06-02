@@ -8,7 +8,7 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Plus, Trash2, Save } from 'lucide-react';
 
-// Nueva función para crear un servicio
+// Función para crear un servicio
 const createService = async (serviceData: { tipo: string; precio_base: number; descripcion: string }) => {
   const response = await fetch('http://127.0.0.1:8000/servicios/', {
     method: 'POST',
@@ -24,6 +24,22 @@ const createService = async (serviceData: { tipo: string; precio_base: number; d
   return response.json();
 };
 
+// Nueva función para crear un producto
+const createProduct = async (productData: { tipo: string; precio_base: number; descripcion: string }) => {
+  const response = await fetch('http://127.0.0.1:8000/productos/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(productData),
+  });
+  if (!response.ok) {
+    throw new Error('Error al crear el producto');
+  }
+  return response.json();
+};
+
 const NewDischarge: React.FC = () => {
   const navigate = useNavigate();
   const { patients, services, products, createDischarge } = usePatients();
@@ -34,7 +50,7 @@ const NewDischarge: React.FC = () => {
     id: string;
     quantity: number;
     price: number;
-    description?: string;
+    description: string; // Hacer descripción obligatoria para ambos
   }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -52,15 +68,18 @@ const NewDischarge: React.FC = () => {
     { value: 'imagen_rayos_x', label: 'Imagen de Rayos X' },
   ];
 
-  const productOptions = products.map(product => ({
-    value: product.id.toString(),
-    label: product.descripcion
-  }));
+  // Nueva lista de tipos de productos
+  const productTypeOptions = [
+    { value: 'medicamentos', label: 'Medicamentos' },
+    { value: 'insumos_medicos', label: 'Insumos Médicos' },
+    { value: 'suplementos_nutricionales', label: 'Suplementos Nutricionales' },
+    { value: 'vacunas', label: 'Vacunas' },
+  ];
 
   const addItem = (type: 'product' | 'service') => {
     setSelectedItems([
       ...selectedItems,
-      { type, id: '', quantity: 1, price: 0, description: type === 'service' ? '' : undefined }
+      { type, id: '', quantity: 1, price: 0, description: '' }
     ]);
   };
 
@@ -92,11 +111,8 @@ const NewDischarge: React.FC = () => {
     }
 
     selectedItems.forEach((item, index) => {
-      if (!item.id && item.type === 'product') {
-        newErrors[`item_${index}_id`] = 'Seleccione un producto';
-      }
-      if (!item.id && item.type === 'service') {
-        newErrors[`item_${index}_id`] = 'Seleccione un tipo de servicio';
+      if (!item.id) {
+        newErrors[`item_${index}_id`] = `Seleccione un tipo de ${item.type === 'product' ? 'producto' : 'servicio'}`;
       }
       if (item.quantity <= 0) {
         newErrors[`item_${index}_quantity`] = 'La cantidad debe ser mayor a 0';
@@ -104,8 +120,8 @@ const NewDischarge: React.FC = () => {
       if (item.price < 0) {
         newErrors[`item_${index}_price`] = 'El precio no puede ser negativo';
       }
-      if (item.type === 'service' && !item.description) {
-        newErrors[`item_${index}_description`] = 'Ingrese una descripción para el servicio';
+      if (!item.description) {
+        newErrors[`item_${index}_description`] = `Ingrese una descripción para el ${item.type === 'product' ? 'producto' : 'servicio'}`;
       }
     });
 
@@ -121,29 +137,34 @@ const NewDischarge: React.FC = () => {
     }
 
     try {
-      // Procesar los items para crear servicios si es necesario
       const processedItems = await Promise.all(
         selectedItems.map(async (item) => {
           if (item.type === 'service') {
-            // Crear un nuevo servicio en el backend
             const newService = await createService({
-              tipo: item.id, // El "id" aquí es el tipo de servicio (atencion_medica, etc.)
+              tipo: item.id,
               precio_base: item.price,
-              descripcion: item.description || '',
+              descripcion: item.description,
             });
             return {
-              servicio_id: newService.id, // Usar el ID del servicio recién creado
+              servicio_id: newService.id,
               producto_id: undefined,
               cantidad: item.quantity,
               precio: item.price,
               descripcion: item.description,
             };
           } else {
+            // Crear un nuevo producto
+            const newProduct = await createProduct({
+              tipo: item.id, // El "id" aquí es el tipo de producto (medicamentos, etc.)
+              precio_base: item.price,
+              descripcion: item.description,
+            });
             return {
               servicio_id: undefined,
-              producto_id: parseInt(item.id),
+              producto_id: newProduct.id,
               cantidad: item.quantity,
               precio: item.price,
+              descripcion: item.description,
             };
           }
         })
@@ -237,8 +258,8 @@ const NewDischarge: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       {item.type === 'product' ? (
                         <Select
-                          label="Producto"
-                          options={productOptions}
+                          label="Tipo de Producto"
+                          options={productTypeOptions}
                           value={item.id}
                           onChange={(value) => updateItem(index, 'id', value)}
                           error={errors[`item_${index}_id`]}
@@ -269,15 +290,13 @@ const NewDischarge: React.FC = () => {
                         onChange={(e) => updateItem(index, 'price', e.target.value)}
                         error={errors[`item_${index}_price`]}
                       />
-                      {item.type === 'service' && (
-                        <Input
-                          label="Descripción"
-                          placeholder="Descripción del servicio aplicado"
-                          value={item.description || ''}
-                          onChange={(e) => updateItem(index, 'description', e.target.value)}
-                          error={errors[`item_${index}_description`]}
-                        />
-                      )}
+                      <Input
+                        label="Descripción"
+                        placeholder={`Descripción del ${item.type === 'product' ? 'producto' : 'servicio'} aplicado`}
+                        value={item.description}
+                        onChange={(e) => updateItem(index, 'description', e.target.value)}
+                        error={errors[`item_${index}_description`]}
+                      />
                     </div>
                   </div>
                 ))}
