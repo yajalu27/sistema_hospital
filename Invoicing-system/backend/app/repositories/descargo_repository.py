@@ -3,6 +3,11 @@ from app.models import Descargo, LineaDocumentoTransaccional, LineaDescargo, Ser
 from app.schemas.descargo_schema import LineaDescargoCreate
 from fastapi import HTTPException
 from sqlalchemy.orm import joinedload
+from app.services.prototypes.prototype_base import (
+    linea_transaccional_prototype_servicio,
+    linea_transaccional_prototype_producto,
+    linea_descargo_prototype
+)
 
 class DescargoRepository:
     def __init__(self, db: Session):
@@ -14,7 +19,7 @@ class DescargoRepository:
             self.db.add(descargo)
             self.db.commit()
             self.db.refresh(descargo)
-            a
+            
             total = 0.0
             lineas_response = []
             
@@ -25,25 +30,34 @@ class DescargoRepository:
                         detail="Cada línea debe tener solo servicio o producto, no ambos"
                     )
                 
+                # Seleccionar prototipo adecuado
+                linea_trans_prototype = (
+                    linea_transaccional_prototype_servicio.clone() if linea.servicio_id
+                    else linea_transaccional_prototype_producto.clone() if linea.producto_id
+                    else linea_transaccional_prototype_servicio.clone()
+                )
+                
                 precio = self._obtener_precio(linea.servicio_id, linea.producto_id)
                 subtotal = precio * linea.cantidad
                 total += subtotal
                 
-                linea_trans = LineaDocumentoTransaccional(
-                    descargo_id=descargo.id,
-                    servicio_id=linea.servicio_id,
-                    producto_id=linea.producto_id,
-                    cantidad=linea.cantidad
-                )
+                # Personalizar el prototipo
+                linea_trans = linea_trans_prototype
+                linea_trans.cantidad = linea.cantidad
+                linea_trans.servicio_id = linea.servicio_id
+                linea_trans.producto_id = linea.producto_id
+                linea_trans.descargo_id = descargo.id
+                
                 self.db.add(linea_trans)
                 self.db.commit()
                 
+                # Clonar y personalizar LineaDescargo
+                linea_descargo = linea_descargo_prototype.clone()
                 descripcion = self._generar_descripcion(linea.servicio_id, linea.producto_id)
-                linea_descargo = LineaDescargo(
-                    linea_transaccional_id=linea_trans.id,
-                    descripcion=descripcion,
-                    subtotal_sin_iva=subtotal
-                )
+                linea_descargo.descripcion = descripcion
+                linea_descargo.subtotal_sin_iva = subtotal
+                linea_descargo.linea_transaccional_id = linea_trans.id
+                
                 self.db.add(linea_descargo)
                 self.db.commit()
                 
@@ -78,7 +92,7 @@ class DescargoRepository:
                     status_code=404,
                     detail=f"Servicio con ID {servicio_id} no encontrado"
                 )
-            return servicio.precio_base
+            return servicio.calcular_precio()
         elif producto_id:
             producto = self.db.query(Producto).filter(Producto.id == producto_id).first()
             if not producto:
@@ -86,7 +100,7 @@ class DescargoRepository:
                     status_code=404,
                     detail=f"Producto con ID {producto_id} no encontrado"
                 )
-            return producto.precio_base
+            return producto.calcular_precio()
         else:
             raise HTTPException(
                 status_code=400,
@@ -96,10 +110,10 @@ class DescargoRepository:
     def _generar_descripcion(self, servicio_id: int = None, producto_id: int = None) -> str:
         if servicio_id:
             servicio = self.db.query(Servicio).filter(Servicio.id == servicio_id).first()
-            return f"Servicio: {servicio.descripcion}" if servicio else f"Servicio ID: {servicio_id}"
+            return f"Servicio: {servicio.get_descripcion()}" if servicio else f"Servicio ID: {servicio_id}"
         elif producto_id:
             producto = self.db.query(Producto).filter(Producto.id == producto_id).first()
-            return f"Producto: {producto.descripcion}" if producto else f"Producto ID: {producto_id}"
+            return f"Producto: {producto.get_descripcion()}" if producto else f"Producto ID: {producto_id}"
         return "Ítem no especificado"
     
     def obtener_descargos_por_paciente(self, paciente_id: int):

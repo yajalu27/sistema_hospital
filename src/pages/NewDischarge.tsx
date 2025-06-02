@@ -8,6 +8,22 @@ import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import { Plus, Trash2, Save } from 'lucide-react';
 
+// Nueva función para crear un servicio
+const createService = async (serviceData: { tipo: string; precio_base: number; descripcion: string }) => {
+  const response = await fetch('http://127.0.0.1:8000/servicios/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(serviceData),
+  });
+  if (!response.ok) {
+    throw new Error('Error al crear el servicio');
+  }
+  return response.json();
+};
+
 const NewDischarge: React.FC = () => {
   const navigate = useNavigate();
   const { patients, services, products, createDischarge } = usePatients();
@@ -17,38 +33,41 @@ const NewDischarge: React.FC = () => {
     type: 'product' | 'service';
     id: string;
     quantity: number;
+    price: number;
     description?: string;
   }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Filtrar pacientes activos (no dados de alta)
   const activePatients = patients.filter(p => p.estado === 'internado');
   const patientOptions = activePatients.map(patient => ({
     value: patient.id.toString(),
     label: patient.nombre_completo
   }));
 
+  const serviceTypeOptions = [
+    { value: 'atencion_medica', label: 'Atención Médica' },
+    { value: 'examen_laboratorio', label: 'Examen de Laboratorio' },
+    { value: 'suministro_medicamento', label: 'Suministro de Medicamento' },
+    { value: 'procedimiento_medico', label: 'Procedimiento Médico' },
+    { value: 'imagen_rayos_x', label: 'Imagen de Rayos X' },
+  ];
+
   const productOptions = products.map(product => ({
     value: product.id.toString(),
     label: product.descripcion
   }));
 
-  const serviceOptions = services.map(service => ({
-    value: service.id.toString(),
-    label: service.descripcion
-  }));
-
   const addItem = (type: 'product' | 'service') => {
     setSelectedItems([
       ...selectedItems,
-      { type, id: '', quantity: 1, description: type === 'service' ? '' : undefined }
+      { type, id: '', quantity: 1, price: 0, description: type === 'service' ? '' : undefined }
     ]);
   };
 
   const updateItem = (index: number, field: string, value: string) => {
     const updatedItems = [...selectedItems];
-    if (field === 'quantity') {
-      updatedItems[index] = { ...updatedItems[index], [field]: Math.max(1, parseInt(value) || 1) };
+    if (field === 'quantity' || field === 'price') {
+      updatedItems[index] = { ...updatedItems[index], [field]: Math.max(0, parseFloat(value) || 0) };
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
     }
@@ -73,11 +92,17 @@ const NewDischarge: React.FC = () => {
     }
 
     selectedItems.forEach((item, index) => {
-      if (!item.id) {
-        newErrors[`item_${index}_id`] = `Seleccione un ${item.type === 'product' ? 'producto' : 'servicio'}`;
+      if (!item.id && item.type === 'product') {
+        newErrors[`item_${index}_id`] = 'Seleccione un producto';
+      }
+      if (!item.id && item.type === 'service') {
+        newErrors[`item_${index}_id`] = 'Seleccione un tipo de servicio';
       }
       if (item.quantity <= 0) {
         newErrors[`item_${index}_quantity`] = 'La cantidad debe ser mayor a 0';
+      }
+      if (item.price < 0) {
+        newErrors[`item_${index}_price`] = 'El precio no puede ser negativo';
       }
       if (item.type === 'service' && !item.description) {
         newErrors[`item_${index}_description`] = 'Ingrese una descripción para el servicio';
@@ -90,20 +115,43 @@ const NewDischarge: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validate()) {
       return;
     }
 
     try {
+      // Procesar los items para crear servicios si es necesario
+      const processedItems = await Promise.all(
+        selectedItems.map(async (item) => {
+          if (item.type === 'service') {
+            // Crear un nuevo servicio en el backend
+            const newService = await createService({
+              tipo: item.id, // El "id" aquí es el tipo de servicio (atencion_medica, etc.)
+              precio_base: item.price,
+              descripcion: item.description || '',
+            });
+            return {
+              servicio_id: newService.id, // Usar el ID del servicio recién creado
+              producto_id: undefined,
+              cantidad: item.quantity,
+              precio: item.price,
+              descripcion: item.description,
+            };
+          } else {
+            return {
+              servicio_id: undefined,
+              producto_id: parseInt(item.id),
+              cantidad: item.quantity,
+              precio: item.price,
+            };
+          }
+        })
+      );
+
       const dischargeData = {
         paciente_id: parseInt(patientId),
-        lineas: selectedItems.map(item => ({
-          servicio_id: item.type === 'service' ? parseInt(item.id) : undefined,
-          producto_id: item.type === 'product' ? parseInt(item.id) : undefined,
-          cantidad: item.quantity,
-          ...(item.type === 'service' && { descripcion: item.description })
-        }))
+        lineas: processedItems,
       };
 
       await createDischarge(dischargeData);
@@ -186,14 +234,24 @@ const NewDischarge: React.FC = () => {
                         Eliminar
                       </Button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Select
-                        label={item.type === 'product' ? 'Producto' : 'Servicio'}
-                        options={item.type === 'product' ? productOptions : serviceOptions}
-                        value={item.id}
-                        onChange={(value) => updateItem(index, 'id', value)}
-                        error={errors[`item_${index}_id`]}
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {item.type === 'product' ? (
+                        <Select
+                          label="Producto"
+                          options={productOptions}
+                          value={item.id}
+                          onChange={(value) => updateItem(index, 'id', value)}
+                          error={errors[`item_${index}_id`]}
+                        />
+                      ) : (
+                        <Select
+                          label="Tipo de Servicio"
+                          options={serviceTypeOptions}
+                          value={item.id}
+                          onChange={(value) => updateItem(index, 'id', value)}
+                          error={errors[`item_${index}_id`]}
+                        />
+                      )}
                       <Input
                         type="number"
                         label="Cantidad"
@@ -201,6 +259,15 @@ const NewDischarge: React.FC = () => {
                         value={item.quantity.toString()}
                         onChange={(e) => updateItem(index, 'quantity', e.target.value)}
                         error={errors[`item_${index}_quantity`]}
+                      />
+                      <Input
+                        type="number"
+                        label="Precio"
+                        min="0"
+                        step="0.01"
+                        value={item.price.toString()}
+                        onChange={(e) => updateItem(index, 'price', e.target.value)}
+                        error={errors[`item_${index}_price`]}
                       />
                       {item.type === 'service' && (
                         <Input

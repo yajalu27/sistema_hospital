@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, DateTime, Integer, Float, ForeignKey, String
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+import copy
 
 class LineaDocumentoTransaccional(Base):
     __tablename__ = "lineas_transaccionales"
@@ -33,6 +34,9 @@ class LineaDocumentoTransaccional(Base):
         cascade="all, delete-orphan"
     )
 
+    def clone(self):
+        return copy.deepcopy(self)
+
 class LineaDescargo(Base):
     __tablename__ = "lineas_descargo"
     
@@ -49,6 +53,9 @@ class LineaDescargo(Base):
         "LineaDocumentoTransaccional", 
         back_populates="linea_descargo"
     )
+
+    def clone(self):
+        return copy.deepcopy(self)
 
 class LineaFactura(Base):
     __tablename__ = 'lineas_factura'
@@ -73,6 +80,9 @@ class LineaFactura(Base):
         "LineaDocumentoTransaccional", 
         back_populates="linea_factura"
     )
+
+    def clone(self):
+        return copy.deepcopy(self)
 
 class Factura(Base):
     __tablename__ = 'facturas'

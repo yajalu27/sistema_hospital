@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from app.repositories.servicio_repository import ServicioRepository
 from app.schemas.servicio_producto_schema import ServicioResponse
-from app.models.servicio import TipoServicio
+from app.models.servicio import TipoServicio, Servicio
 
 class ServicioService:
     def __init__(self, db):
