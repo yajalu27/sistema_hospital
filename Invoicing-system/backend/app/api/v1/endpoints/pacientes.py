@@ -53,3 +53,23 @@ def get_interned_patients_with_discharges(db: Session = Depends(get_db)):
 @router.get("/alta-con-descargos-no-facturados/", response_model=list[PacienteConDescargosSimpleResponse])
 def get_discharged_patients_with_unbilled_discharges(db: Session = Depends(get_db)):
     return PacienteService(db).obtener_pacientes_alta_con_descargos_no_facturados()
+
+@router.post("/{paciente_id}/agregar_descargo/", response_model=PacienteResponse)
+def add_discharge(paciente_id: int, descargo_data: dict, db: Session = Depends(get_db)):
+    paciente = PacienteService(db).set_alta(paciente_id)
+    if not paciente:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    descargo = PacienteService(db).repo.agregar_descargo(paciente_id, descargo_data)
+    if descargo is None:
+        raise HTTPException(status_code=400, detail="No se pudo agregar el descargo")
+    return paciente
+
+@router.post("/{paciente_id}/facturar/", response_model=PacienteResponse)
+def bill_patient(paciente_id: int, factura_data: dict, db: Session = Depends(get_db)):
+    paciente = PacienteService(db).obtener_paciente(paciente_id)
+    if not paciente:
+        raise HTTPException(status_code=404, detail="Paciente no encontrado")
+    factura = PacienteService(db).repo.facturar(paciente_id, factura_data)
+    if factura is None:
+        raise HTTPException(status_code=400, detail="No se pudo facturar")
+    return paciente

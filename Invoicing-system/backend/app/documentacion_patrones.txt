@@ -1,0 +1,155 @@
+1. Prototype Pattern (Patrón Prototipo)
+Definición
+El patrón Prototipo permite crear nuevos objetos clonando una instancia existente (prototipo) en lugar de crearlos desde cero usando una clase. Esto es útil cuando la creación de objetos es costosa o compleja, y prefieres copiar un objeto preconfigurado.
+
+Propósito
+Evitar la creación repetitiva de objetos con configuraciones similares.
+Facilitar la personalización de objetos basados en un prototipo existente.
+Reducir la dependencia de clases específicas al permitir la clonación.
+Aplicación en tu Proyecto
+En tu sistema hospitalario, aunque no se implementó de manera explícita un clonador de objetos (como un método clone()), el concepto de Prototipo puede estar implícito en la forma en que manejas instancias de Paciente o Factura. Por ejemplo:
+
+Cuando creas un nuevo Paciente con datos predefinidos (como un paciente típico con estado "internado"), podrías haber usado un prototipo para clonar esa instancia y luego personalizarla con datos específicos (nombre, afección, etc.).
+Sin embargo, dado que usaste SQLAlchemy para gestionar las instancias desde la base de datos, el patrón Prototipo no se aplicó directamente. Si quisieras implementarlo explícitamente, podrías agregar un método clone() en Paciente para duplicar instancias con ajustes, pero esto no parece ser un enfoque central en tu diseño actual.
+Ejemplo Teórico
+Si lo hubieras implementado:
+
+python
+
+Contraer
+
+Ajuste
+
+Ejecutar
+
+Copiar
+class Paciente:
+    def __init__(self, nombre, afeccion, estado="internado"):
+        self.nombre = nombre
+        self.afeccion = afeccion
+        self.estado = estado
+
+    def clone(self):
+        return Paciente(self.nombre, self.afeccion, self.estado)
+
+# Uso
+prototipo = Paciente("Paciente Genérico", "Sin Especificar")
+nuevo_paciente = prototipo.clone()
+nuevo_paciente.nombre = "Juan Pérez"
+En tu caso, la creación de pacientes se delega a SQLAlchemy y al repositorio, por lo que el patrón se podría considerar implícito en la reutilización de estructuras predefinidas cargadas desde la base de datos.
+
+2. Factory Pattern (Patrón Fábrica)
+Definición
+El patrón Fábrica proporciona una interfaz para crear objetos de una clase concreta sin especificar la clase exacta, delegando la creación a una fábrica. Esto permite encapsular la lógica de creación y facilitar la extensión del sistema.
+
+Propósito
+Centralizar la creación de objetos para mejorar la mantenibilidad.
+Permitir la creación de diferentes tipos de objetos sin modificar el código cliente.
+Facilitar la inyección de dependencias o la configuración dinámica.
+Aplicación en tu Proyecto
+En tu sistema, el patrón Fábrica se implementa de manera implícita a través del PacienteRepository, que actúa como una fábrica para crear y gestionar instancias de Paciente. Por ejemplo:
+
+El método crear_paciente en PacienteRepository encapsula la lógica de creación de un nuevo Paciente, inicializándolo con datos proporcionados y persistiendo el objeto en la base de datos:
+python
+
+Contraer
+
+Ajuste
+
+Ejecutar
+
+Copiar
+def crear_paciente(self, paciente_data: dict):
+    paciente = Paciente(**paciente_data)
+    self.db.add(paciente)
+    self.db.commit()
+    self.db.refresh(paciente)
+    return paciente
+Esto evita que el código cliente (como los endpoints de FastAPI) tenga que instanciar directamente Paciente, delegando la responsabilidad al repositorio.
+Además, el patrón Fábrica podría extenderse para crear diferentes tipos de documentos (como Descargo o Factura) de manera similar, aunque en tu caso se limita principalmente a Paciente.
+Ejemplo Práctico
+En tu código, el repositorio actúa como una fábrica al crear y configurar instancias:
+
+Cuando un endpoint como POST /pacientes/crear_paciente/ recibe datos, el PacienteRepository los usa para crear un nuevo Paciente con el estado inicial "internado" (definido en el modelo).
+Si quisieras hacerlo más explícito, podrías crear una clase PacienteFactory:
+
+python
+
+Contraer
+
+Ajuste
+
+Ejecutar
+
+Copiar
+class PacienteFactory:
+    @staticmethod
+    def crear_paciente(db, paciente_data):
+        paciente = Paciente(**paciente_data)
+        db.add(paciente)
+        db.commit()
+        db.refresh(paciente)
+        return paciente
+3. State Pattern (Patrón Estado)
+Definición
+El patrón Estado permite que un objeto cambie su comportamiento cuando su estado interno cambia, encapsulando los estados en clases separadas. Esto hace que el objeto parezca cambiar su clase en tiempo de ejecución.
+
+Propósito
+Gestionar el comportamiento complejo basado en el estado de un objeto.
+Facilitar la adición de nuevos estados sin modificar el código existente.
+Mejorar la legibilidad al separar la lógica de cada estado.
+Aplicación en tu Proyecto
+El patrón State es el más prominente en tu sistema hospitalario y se implementa para gestionar los diferentes estados de un Paciente (internado, alta, facturado). Aquí está cómo se aplica:
+
+Clase Base PacienteState: Define una interfaz común para todos los estados (métodos como agregar_descargo, dar_alta, facturar, get_estado).
+Clases de Estado Concretas:
+InternadoState: Permite agregar descargos y dar de alta, pero no facturar.
+AltaState: Permite facturar, pero no agregar descargos ni dar de alta nuevamente.
+FacturadoState: No permite ninguna operación adicional.
+Clase Paciente: Contiene un atributo _state que referencia el estado actual y delega las acciones a este estado. Por ejemplo:
+python
+
+Contraer
+
+Ajuste
+
+Ejecutar
+
+Copiar
+def dar_alta(self):
+    return self._state.dar_alta(self)
+Transiciones de Estado: Cuando se llama a dar_alta() o facturar(), el estado cambia (por ejemplo, de InternadoState a AltaState, o de AltaState a FacturadoState), y se actualiza paciente.estado y paciente._state.
+Ejemplo Práctico
+En tu código:
+
+Cuando un paciente está en AltaState y se llama a facturar:
+python
+
+Contraer
+
+Ajuste
+
+Ejecutar
+
+Copiar
+def facturar(self, paciente, factura_data):
+    factura = Factura(**factura_data)
+    paciente.facturas.append(factura)
+    paciente.estado = "facturado"
+    paciente._state = FacturadoState()
+    return factura
+Esto cambia el comportamiento del paciente (por ejemplo, ya no se pueden agregar descargos) y persiste el cambio en la base de datos a través del repositorio.
+Beneficio en tu Proyecto
+La lógica de cada estado (qué acciones son válidas o no) está encapsulada, haciendo que sea fácil agregar un nuevo estado (por ejemplo, "pendiente de pago") sin alterar la clase Paciente.
+El problema reciente con el estado "alta" persistiendo a pesar de las facturas se relaciona con la persistencia del cambio de estado, pero el diseño del patrón State sigue siendo sólido y funcional una vez resuelto.
+
+
+Resumen y Relación entre Patrones
+Prototype: Aunque no se implementó explícitamente, podría usarse para clonar configuraciones de pacientes predefinidas, complementando la creación gestionada por el Factory.
+Factory: El PacienteRepository actúa como fábrica, centralizando la creación de Paciente y facilitando la integración con el State al proporcionar instancias listas para usar con un estado inicial.
+State: Es el núcleo del manejo del ciclo de vida del paciente, permitiendo que el comportamiento cambie dinámicamente según el estado, y se integra con el Factory al inicializar el estado en el momento de la creación.
+Solución al Problema Actual
+Dado que mencionaste que el estado sigue siendo "alta" a pesar de las facturas, el problema parece estar en la persistencia del cambio de paciente.estado en la base de datos. Los ajustes anteriores (como self.db.add(paciente) y la eliminación temporal de refresh) deberían haber ayudado, pero si no, te sugiero:
+
+Verificar los mensajes de depuración en la terminal después de facturar.
+Asegurarte de que la columna estado en la tabla pacientes se actualice ejecutando una consulta SQL manual (por ejemplo, SELECT estado FROM pacientes WHERE id = 33) después de facturar.

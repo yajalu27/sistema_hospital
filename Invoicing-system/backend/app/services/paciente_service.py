@@ -29,12 +29,9 @@ class PacienteService:
 
     def obtener_pacientes_internados_con_descargos(self):
         pacientes = self.repo.obtener_pacientes_internados()
-        print("Pacientes internados encontrados:", pacientes)
-        
         result = []
         for paciente in pacientes:
             descargos = self.repo.obtener_descargos_paciente(paciente.id)
-            print(f"Descargos para paciente {paciente.id} ({paciente.nombre_completo}):", descargos)
             if descargos:
                 paciente_dict = {
                     "id": paciente.id,
@@ -64,14 +61,10 @@ class PacienteService:
                     ]
                 }
                 result.append(PacienteConDescargosSimpleResponse(**paciente_dict))
-        
-        print("Resultado final:", result)
         return result
 
     def obtener_pacientes_alta_con_descargos_no_facturados(self):
         pacientes = self.repo.obtener_pacientes_alta_con_descargos_no_facturados()
-        print("Pacientes en alta con descargos no facturados encontrados:", pacientes)
-        
         result = []
         for paciente in pacientes:
             descargos = [descargo for descargo in paciente.descargos]
@@ -105,6 +98,4 @@ class PacienteService:
                     ]
                 }
                 result.append(PacienteConDescargosSimpleResponse(**paciente_dict))
-        
-        print("Resultado final:", result)
         return result

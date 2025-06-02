@@ -9,7 +9,7 @@ from app.api.v1.endpoints import (
     facturas
 )
 
-app = FastAPI()
+app = FastAPI(debug=True)
 
 # Configuración de CORS
 app.add_middleware(

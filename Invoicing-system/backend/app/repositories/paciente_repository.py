@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session, joinedload
 from app.models.paciente import Paciente
 from app.models.descargo import Descargo
-from app.models.linea_transaccional import LineaDocumentoTransaccional
-from app.models.linea_transaccional import LineaFactura, Factura
+from app.models.linea_transaccional import LineaDocumentoTransaccional, LineaFactura, Factura
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 class PacienteRepository:
     def __init__(self, db: Session):
@@ -38,10 +38,44 @@ class PacienteRepository:
     def set_alta(self, paciente_id: int):
         paciente = self.obtener_por_id(paciente_id)
         if paciente:
-            paciente.estado = "alta"
-            self.db.commit()
-            self.db.refresh(paciente)
+            try:
+                paciente.dar_alta()  # Delega al estado actual
+                self.db.commit()
+                self.db.refresh(paciente)
+            except Exception as e:
+                self.db.rollback()
+                raise Exception(f"Error al dar de alta al paciente: {str(e)}")
         return paciente
+
+    def agregar_descargo(self, paciente_id: int, descargo_data: dict):
+        paciente = self.obtener_por_id(paciente_id)
+        if paciente:
+            try:
+                descargo = paciente.agregar_descargo(descargo_data)
+                self.db.commit()
+                self.db.refresh(paciente)
+                return descargo
+            except Exception as e:
+                self.db.rollback()
+                raise Exception(f"Error al agregar descargo: {str(e)}")
+        return None
+
+    def facturar(self, paciente_id: int, factura_data: dict):
+        paciente = self.obtener_por_id(paciente_id)
+        if paciente:
+            try:
+                factura = paciente.facturar(factura_data)
+                # Asegurarse de que SQLAlchemy detecte los cambios
+                self.db.add(paciente)  # Marca el objeto como "modificado"
+                self.db.commit()
+                print(f"Estado después de commit: {paciente.estado}")  # Depuración
+                self.db.refresh(paciente)
+                print(f"Estado después de refresh: {paciente.estado}")  # Depuración
+                return factura
+            except Exception as e:
+                self.db.rollback()
+                raise Exception(f"Error al facturar: {str(e)}")
+        return None
 
     def obtener_todos_pacientes(self):
         return self.db.query(Paciente).all()
